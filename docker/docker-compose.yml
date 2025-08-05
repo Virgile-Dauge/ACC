@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  acc:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: acc-marimo
+    ports:
+      - "8000:8000"
+    volumes:
+      - "${DATA_PATH}:/data"
+      - "${HOME_DATA_PATH:-/tmp}:/home/data"
+    environment:
+      - MARIMO_SERVER_HEADLESS=true
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

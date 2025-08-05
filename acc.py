@@ -19,7 +19,7 @@ def _():
 @app.cell(hide_code=True)
 def _(Path, mo):
     folder_picker = mo.ui.file_browser(
-        initial_path=Path('~/data/').expanduser(),
+        initial_path="/data",
         selection_mode="directory", 
         label="Sélectionnez le dossier contenant les zip R15 à traiter"
     )
@@ -53,7 +53,7 @@ def _(folder_picker, mo, pd, process_flux):
 @app.cell(hide_code=True)
 def _(mo):
     journal_picker = mo.ui.file_browser(
-        initial_path="~/",
+        initial_path="/data",
         selection_mode="file",
         restrict_navigation=False,
         label="Sélectionnez le fichier Journal des ventes détaillés (.xlsx)",

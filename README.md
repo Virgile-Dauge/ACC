@@ -9,6 +9,22 @@ Application Marimo pour le traitement et l'analyse des données R15 ACC et des j
 
 ## Installation
 
+### Option 1 : Installation simple avec Docker (Recommandé)
+
+1. **Prérequis** : Installer [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+
+2. **Lancer l'application** :
+   - **Windows** : Double-cliquer sur `docker/lancer-acc.bat`
+   - **Linux/Mac** : Exécuter `./docker/lancer-acc.sh`
+
+3. **Accéder à l'application** : Ouvrir http://localhost:8000 dans votre navigateur
+
+4. **Arrêter l'application** :
+   - **Windows** : Double-cliquer sur `docker/arreter-acc.bat`
+   - **Linux/Mac** : Exécuter `./docker/arreter-acc.sh`
+
+### Option 2 : Installation pour développeurs (Poetry)
+
 1. Cloner le repository
 2. Installer les dépendances avec Poetry :
    ```bash
@@ -17,13 +33,19 @@ Application Marimo pour le traitement et l'analyse des données R15 ACC et des j
 
 ## Utilisation
 
-### Lancer l'application
+### Avec Docker (utilisateurs)
+
+L'application est accessible via votre navigateur à l'adresse http://localhost:8000 après avoir lancé le script approprié.
+
+### Avec Poetry (développeurs)
+
+#### Lancer l'application
 
 ```bash
 poetry run marimo run acc.py
 ```
 
-### Mode édition (pour modifier le notebook)
+#### Mode édition (pour modifier le notebook)
 
 ```bash
 poetry run marimo edit acc.py
@@ -51,12 +73,29 @@ poetry run marimo edit acc.py
 
 ```
 ACC/
-├── acc.py          # Notebook Marimo principal
-├── pyproject.toml  # Configuration Poetry et dépendances
-├── poetry.lock     # Versions figées des dépendances
-├── CLAUDE.md       # Documentation pour Claude Code
-└── README.md       # Ce fichier
+├── acc.py              # Notebook Marimo principal
+├── pyproject.toml      # Configuration Poetry et dépendances
+├── poetry.lock         # Versions figées des dépendances
+├── docker/             # Dossier contenant tous les fichiers Docker
+│   ├── Dockerfile      # Image Docker de l'application
+│   ├── docker-compose.yml  # Configuration Docker Compose
+│   ├── lancer-acc.bat  # Script de lancement Windows
+│   ├── lancer-acc.sh   # Script de lancement Linux/Mac
+│   ├── arreter-acc.bat # Script d'arrêt Windows
+│   ├── arreter-acc.sh  # Script d'arrêt Linux/Mac
+│   └── .env.example    # Exemple de configuration
+├── CLAUDE.md           # Documentation pour Claude Code
+├── README.md           # Ce fichier
+└── data/               # Dossier pour les données (créé automatiquement)
 ```
+
+## Organisation des données
+
+L'application peut accéder aux fichiers dans deux emplacements :
+- `/data` : Dossier local du projet (créé automatiquement)
+- `~/data` : Dossier data de votre répertoire utilisateur
+
+Placez vos fichiers R15 et journaux de ventes dans l'un de ces dossiers pour y accéder depuis l'application.
 
 ## Dépendances principales
 

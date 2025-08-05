@@ -1,0 +1,23 @@
+[project]
+name = "acc"
+version = "0.1.0"
+description = "Application Marimo pour traiter les données R15 ACC"
+authors = [
+    {name = "Virgile Daugé"}
+]
+readme = "README.md"
+requires-python = "^3.12"
+dependencies = [
+    "marimo (>=0.14.16,<0.15.0)",
+    "pandas (>=2.3.1,<3.0.0)",
+    "numpy (>=2.3.2,<3.0.0)",
+    "electriflux (>=1.1.0,<2.0.0)",
+    "pyarrow (>=21.0.0,<22.0.0)",
+    "openpyxl (>=3.1.5,<4.0.0)",
+    "altair (>=5.5.0,<6.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

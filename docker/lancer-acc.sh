@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "========================================"
-echo "   ACC - Analyse Contrats et Consommations"
+echo "   ACC - Autoconsommation Collective"
 echo "========================================"
 echo
 

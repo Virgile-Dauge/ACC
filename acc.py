@@ -55,6 +55,59 @@ def _(r15):
     return
 
 
+@app.cell
+def _(r15):
+    debut_acc = r15[r15['Autoconsommation_Collective'] == '0']['Date_Releve'].min()
+    debut_acc
+    return (debut_acc,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    # Sélecteur de date pour la régularisation (mois/année)
+    import datetime
+
+    # Date par défaut : premier jour du mois courant
+    current_date = datetime.date.today()
+    default_date = current_date.replace(day=1)
+
+    date_regularisation_picker = mo.ui.date(
+        value=default_date,
+        label="Sélectionnez le mois de régularisation",
+        start=datetime.date(2022, 1, 1),  # Date minimum
+        stop=current_date  # Date maximum (aujourd'hui)
+    )
+
+    return (date_regularisation_picker,)
+
+
+@app.cell(hide_code=True)
+def _(date_regularisation_picker):
+    date_regularisation_picker
+    return
+
+
+@app.cell
+def _(date_regularisation_picker, debut_acc, pd, r15):
+    # Filtrer les données R15 entre debut_acc et date_regularisation
+    import datetime
+
+    # Convertir la date de régularisation en datetime avec timezone UTC
+    date_regularisation = pd.Timestamp(date_regularisation_picker.value).tz_localize('UTC')
+
+    # Filtrer les données R15
+    r15_filtered = r15[
+        (r15['Date_Releve'] >= debut_acc) & 
+        (r15['Date_Releve'] <= date_regularisation)
+    ].copy()
+
+    # Afficher un résumé du filtrage
+    print(f"Période filtrée : de {debut_acc.date()} à {date_regularisation.date()}")
+    print(f"Nombre de lignes après filtrage : {len(r15_filtered)} (sur {len(r15)} lignes totales)")
+
+    return (date_regularisation,)
+
+
 @app.cell(hide_code=True)
 def _(mo):
     journal_picker = mo.ui.file_browser(
@@ -73,7 +126,7 @@ def _(journal_picker):
 
 
 @app.cell
-def _(journal_picker, mo, pd):
+def _(date_regularisation, debut_acc, journal_picker, mo, pd):
     mo.stop(not journal_picker.value, mo.md("⚠️ **Veuillez sélectionner le fichier Journal des ventes détaillés**"))
 
     # Charger le fichier Excel sélectionné
@@ -82,8 +135,20 @@ def _(journal_picker, mo, pd):
     # Convertir Date_Releve en format date
     if 'DATEFACT' in journal_ventes.columns:
         journal_ventes['DATEFACT'] = pd.to_datetime(journal_ventes['DATEFACT'], errors='coerce', utc=True)
-    mo.md(f"✅ **Fichier chargé:** {journal_picker.value[0].name}")
 
+    # Filtrer les données du journal entre debut_acc et date_regularisation
+    journal_ventes_filtered = journal_ventes[
+        (journal_ventes['DATEFACT'] >= debut_acc) & 
+        (journal_ventes['DATEFACT'] <= date_regularisation)
+    ].copy()
+
+    mo.md(f"""✅ **Fichier chargé:** {journal_picker.value[0].name}
+
+    **Période filtrée:** de {debut_acc.date()} à {date_regularisation.date()}
+
+    **Nombre de lignes:** {len(journal_ventes_filtered)} (sur {len(journal_ventes)} lignes totales)""")
+    journal_ventes = journal_ventes_filtered
+    # Ajout col PRM
     return (journal_ventes,)
 
 
@@ -99,7 +164,7 @@ def _(journal_ventes, mo):
 
     # Grouper et sommer par CONTRAT, PÉRIODE et NOM_ARTICLE
     # Colonnes de groupby
-    groupby_cols = ['CONTRAT', 'PÉRIODE', 'NOM_ARTICLE']
+    groupby_cols = ['CONTRAT', 'PÉRIODE', 'CODE_ARTICLE', 'PUHT']
 
     # Colonnes numériques à sommer (exclure PDS_CONTRAT et les colonnes de groupby)
     numeric_cols = [col for col in journal_ventes.columns 

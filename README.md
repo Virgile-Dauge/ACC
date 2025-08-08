@@ -1,163 +1,241 @@
-# ACC - Autoconsommation Collective
+# Analyse des Données d'Autoconsommation Collective (ACC)
 
-Application Marimo pour le traitement et l'analyse des données R15 d'Autoconsommation Collective et des journaux de ventes.
+## 📋 Vue d'ensemble
 
-## À propos de l'Autoconsommation Collective
+Cette application Marimo permet d'analyser les données d'autoconsommation collective en traitant les fichiers R15 et le journal des ventes pour identifier les périodes de prix et optimiser la facturation électrique.
 
-L'autoconsommation collective permet à un ou plusieurs **producteurs** et un ou plusieurs **consommateurs**, proches géographiquement, de se regrouper au sein d'une personne morale pour organiser la consommation de l'électricité produite, le plus souvent d'origine photovoltaïque.
+### Qu'est-ce que l'Autoconsommation Collective (ACC) ?
 
-### Définition légale
-> *Selon l'[article L 315-2 du Code de l'Énergie](https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000043213495), les points de soutirage et d'injection doivent être situés en aval d'un même poste de transformation d'électricité de moyenne en basse tension.*
+L'autoconsommation collective est un dispositif légal français qui permet à plusieurs consommateurs de partager l'électricité produite par une ou plusieurs installations de production d'énergie renouvelable. Les participants peuvent être :
+- Des particuliers (résidences)
+- Des entreprises  
+- Des collectivités publiques
 
-### Acteurs concernés
-Le terme "collective" ne signifie pas uniquement "collectivité". Cette solution s'applique à :
-- **Collectivités territoriales**
-- **Entreprises**
-- **Particuliers**
+Situés dans un périmètre géographique défini, ils partagent l'électricité produite localement, réduisant ainsi leur dépendance au réseau électrique national et leurs coûts énergétiques.
 
-*Source : [EDF Collectivités](https://www.edf.fr/collectivites/le-mag/le-mag-collectivites/strategie-energetique-territoriale/autoconsommation-collective-quelle-application-pour-les-collectivites)*
+## 🎯 Objectifs du Projet
 
-### Grandeurs métier calculées
+Cette application analyse les données ACC pour :
 
-Dans le cadre des opérations d'ACC, Enedis calcule et transmet de nouvelles grandeurs pour chaque Point de Référence Mesure (PRM) participant :
+1. **Traitement des données R15** : Analyse des flux électriques avec conversion automatique des colonnes d'énergie active (EA) et gestion des dates
+2. **Analyse du journal des ventes** : Groupement et agrégation des données commerciales par contrat, période et article
+3. **Identification des périodes de prix** : Détection automatique des changements tarifaires dans le temps
+4. **Optimisation de la régularisation** : Filtrage des données sur une période sélectable pour les calculs de régularisation
 
-#### Pour les producteurs :
-- **PROD** : Production totale injectée sur le Réseau Public de Distribution
-- **AUTOPROD** : Quantité affectée aux consommateurs de l'opération ACC
-- **SURPLUS** : Production résiduelle après affectations aux consommateurs
+## 🏗️ Architecture de l'Application
 
-#### Pour les consommateurs :
-- **CONS** : Consommation totale soutirée sur le RPD
-- **AUTOCONS** : Quantité issue des producteurs ACC affectée au consommateur
-- **COMPLEMENT** : Électricité fournie par le fournisseur en complément de la production ACC
+L'application utilise le framework **Marimo** avec une architecture cellulaire où chaque `@app.cell` représente une unité d'exécution isolée :
 
-## Prérequis
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Configuration │    │  Sélection des   │    │   Traitement    │
+│   & Validation  │ -> │     Fichiers     │ -> │   des Données   │
+│                 │    │                  │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                                |
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│    Analyse &    │    │   Identification │    │   Affichage     │
+│   Visualisation │ <- │  des Périodes    │ <- │   & Filtrage    │
+│                 │    │    de Prix       │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+```
 
-- Python 3.12 ou supérieur
-- Poetry pour la gestion des dépendances
+## 📊 Formats de Données
 
-## Installation
+### Fichiers R15_ACC
 
-### Option 1 : Installation simple avec Docker (Recommandé)
+Les fichiers R15 contiennent les données de flux électriques avec :
 
-1. **Prérequis** : Installer [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- **Date_Releve** : Date et heure du relevé (format datetime UTC)
+- **EA\*** : Colonnes d'énergie active (automatiquement converties en numérique)
+- **Autoconsommation_Collective** : Indicateur ACC ('0' = début de l'ACC)
 
-2. **Lancer l'application avec vos données** :
-   - **Windows** : `docker/lancer-acc.bat "C:\chemin\vers\vos\donnees"`
-   - **Linux/Mac** : `./docker/lancer-acc.sh /chemin/vers/vos/donnees`
-   
-   Ou sans paramètre pour utiliser un dossier par défaut :
-   - **Windows** : Double-cliquer sur `docker/lancer-acc.bat`
-   - **Linux/Mac** : Exécuter `./docker/lancer-acc.sh`
+**Exemple de structure :**
+```
+Date_Releve                | EA_Index1 | EA_Index2 | Autoconsommation_Collective
+2023-01-01 00:00:00+00:00 | 1250.5    | 890.2     | 1
+2023-01-01 01:00:00+00:00 | 1251.8    | 891.1     | 0
+```
 
-3. **Accéder à l'application** : Ouvrir http://localhost:8000 dans votre navigateur
+### Journal des Ventes
 
-4. **Arrêter l'application** :
-   - **Windows** : Double-cliquer sur `docker/arreter-acc.bat`
-   - **Linux/Mac** : Exécuter `./docker/arreter-acc.sh`
+Fichier Excel (.xlsx) contenant les données commerciales :
 
-### Option 2 : Installation pour développeurs (Poetry)
+**Colonnes requises :**
+- **CONTRAT** : Identifiant du contrat
+- **CODE_ARTICLE** : Code de l'article facturé
+- **PUHT** : Prix unitaire HT (utilisé pour détecter les changements)
+- **DATEFACT** : Date de facturation
+- **PÉRIODE** : Période de facturation
+- **PDS_CONTRAT** : Puissance souscrite du contrat
 
-1. Cloner le repository
-2. Installer les dépendances avec Poetry :
-   ```bash
-   poetry install
-   ```
+**Exemple de données :**
+```
+CONTRAT | CODE_ARTICLE | PUHT   | DATEFACT   | PÉRIODE | PDS_CONTRAT
+C12345  | ABONNEMENT  | 12.50  | 2023-01-15 | 01/2023 | 6
+C12345  | ABONNEMENT  | 13.20  | 2023-02-15 | 02/2023 | 6
+```
 
-## Utilisation
+## 🔍 Algorithme d'Identification des Périodes de Prix
 
-### Avec Docker (utilisateurs)
+La fonction `identify_price_periods` utilise un algorithme optimisé basé sur les opérations vectorisées pandas :
 
-L'application est accessible via votre navigateur à l'adresse http://localhost:8000 après avoir lancé le script approprié.
+### Principe de Fonctionnement
 
-### Avec Poetry (développeurs)
+1. **Tri chronologique** : Les données sont triées par CONTRAT, CODE_ARTICLE et DATEFACT
+2. **Détection des changements** : Utilisation de `shift(1)` pour comparer chaque prix avec le précédent
+3. **Création des périodes** : Identification des dates de début/fin pour chaque période de prix stable
+4. **Calcul de durée** : Calcul automatique de la durée en jours pour chaque période
 
-#### Lancer l'application
+### Exemple de Traitement
 
+**Données d'entrée :**
+```
+CONTRAT | CODE_ARTICLE | PUHT  | DATEFACT
+C001    | ABONNEMENT  | 12.00 | 2023-01-01
+C001    | ABONNEMENT  | 12.00 | 2023-02-01  
+C001    | ABONNEMENT  | 15.00 | 2023-03-01
+C001    | ABONNEMENT  | 15.00 | 2023-04-01
+```
+
+**Périodes identifiées :**
+```
+CONTRAT | CODE_ARTICLE | PUHT  | date_debut | date_fin   | duree_jours
+C001    | ABONNEMENT  | 12.00 | 2023-01-01 | 2023-02-28 | 59
+C001    | ABONNEMENT  | 15.00 | 2023-03-01 | 2023-04-01 | 32
+```
+
+## 🛠️ Installation et Configuration
+
+### Prérequis
+
+- Python 3.8+
+- Poetry (gestionnaire de dépendances)
+
+### Installation
+
+1. **Cloner le projet :**
 ```bash
-poetry run marimo run acc.py
+git clone <url-du-repo>
+cd ACC
 ```
 
-#### Mode édition (pour modifier le notebook)
-
+2. **Installer les dépendances :**
 ```bash
-poetry run marimo edit acc.py
+poetry install
 ```
 
-## Fonctionnalités
-
-### 1. Traitement des données R15 ACC
-
-- **Chargement des données Enedis** : Sélection du dossier contenant les fichiers ZIP R15
-- **Traitement automatique** : Conversion des colonnes EA (énergies actives) en format numérique
-- **Gestion temporelle** : Conversion de Date_Releve en format datetime (UTC)
-- **Support des grandeurs ACC** : PROD, AUTOPROD, SURPLUS, CONS, AUTOCONS, COMPLEMENT
-
-### 2. Analyse du journal des ventes
-
-- **Import Excel** : Chargement de fichiers Excel (.xlsx) des journaux de ventes
-- **Agrégation hiérarchique** :
-  - Par **CONTRAT** (opération d'autoconsommation collective)
-  - Par **PÉRIODE** (temporalité de facturation)
-  - Par **NOM_ARTICLE** (type de grandeur énergétique)
-- **Calculs automatiques** : Agrégation des colonnes numériques (somme)
-- **Préservation des données** : Conservation de PDS_CONTRAT sans agrégation
-
-## Structure du projet
-
-```
-ACC/
-├── acc.py              # Notebook Marimo principal
-├── pyproject.toml      # Configuration Poetry et dépendances
-├── poetry.lock         # Versions figées des dépendances
-├── docker/             # Dossier contenant tous les fichiers Docker
-│   ├── Dockerfile      # Image Docker de l'application
-│   ├── docker-compose.yml  # Configuration Docker Compose
-│   ├── lancer-acc.bat  # Script de lancement Windows
-│   ├── lancer-acc.sh   # Script de lancement Linux/Mac
-│   ├── arreter-acc.bat # Script d'arrêt Windows
-│   ├── arreter-acc.sh  # Script d'arrêt Linux/Mac
-│   └── .env.example    # Exemple de configuration
-├── CLAUDE.md           # Documentation pour Claude Code
-├── README.md           # Ce fichier
-└── data/               # Dossier pour les données (créé automatiquement)
-```
-
-## Organisation des données
-
-### Types de fichiers supportés
-- **Fichiers R15** : Données ZIP fournies par Enedis contenant les relevés ACC
-- **Journaux de ventes** : Fichiers Excel (.xlsx) avec les données de facturation
-
-### Accès aux données
-L'application accède aux fichiers via le dossier spécifié en paramètre du script de lancement, ou utilise un dossier par défaut si aucun chemin n'est fourni.
-
-Organisez vos fichiers dans le dossier de votre choix et spécifiez le chemin lors du lancement.
-
-## Dépendances principales
-
-- **marimo** : Framework de notebook interactif
-- **pandas** : Manipulation des données
-- **numpy** : Calculs numériques
-- **electriflux** : Traitement des flux R15
-- **altair** : Visualisations
-- **openpyxl** : Lecture des fichiers Excel
-- **pyarrow** : Format de données performant
-
-## Développement
-
-### Ajouter une dépendance
-
-```bash
-poetry add <nom-du-package>
-```
-
-### Activer l'environnement virtuel
-
+3. **Activer l'environnement virtuel :**
 ```bash
 poetry shell
 ```
 
-## Licence
+### Dépendances Principales
 
-Ce projet est sous licence GPL-3.0. Voir le fichier LICENSE pour plus de détails.
+- **marimo** : Framework de notebooks interactifs
+- **electriflux** : Bibliothèque de traitement des données de flux électriques
+- **pandas** : Manipulation et analyse de données
+- **pandera** : Validation et contrôle de qualité des données
+- **numpy** : Calculs numériques
+
+## 📖 Guide d'Utilisation
+
+### 1. Lancement de l'Application
+
+```bash
+# Mode exécution
+poetry run marimo run acc.py
+
+# Mode édition (pour modifier le notebook)
+poetry run marimo edit acc.py
+```
+
+### 2. Utilisation Étape par Étape
+
+#### **Étape 1 : Sélection du Dossier R15**
+- Utilisez le navigateur de fichiers pour sélectionner le dossier contenant les fichiers ZIP R15
+- Chemin par défaut : `~/data/ACC`
+- Les fichiers ZIP seront automatiquement traités par `electriflux`
+
+#### **Étape 2 : Choix de la Date de Régularisation**
+- Sélectionnez le mois de régularisation souhaité
+- Par défaut : premier jour du mois courant
+- Cette date détermine la période d'analyse (du début ACC à cette date)
+
+#### **Étape 3 : Chargement du Journal des Ventes**
+- Sélectionnez le fichier Excel (.xlsx) du journal des ventes détaillés
+- Le fichier doit contenir les colonnes requises (CONTRAT, CODE_ARTICLE, PUHT, DATEFACT)
+
+#### **Étape 4 : Analyse Automatique**
+L'application génère automatiquement :
+- **Données R15 filtrées** : Flux électriques sur la période sélectionnée
+- **Données groupées** : Agrégation par CONTRAT → PÉRIODE → CODE_ARTICLE
+- **Périodes de prix** : Identification des changements tarifaires
+- **Analyses statistiques** : Variations de prix et articles impactés
+
+### 3. Interprétation des Résultats
+
+#### **Données R15**
+- Visualisation des flux électriques avec conversion automatique des types
+- Identification automatique du début de l'autoconsommation collective
+- Filtrage sur la période de régularisation sélectionnée
+
+#### **Journal des Ventes Groupé**
+- Agrégation intelligente :
+  - **Colonnes numériques** : Sommées (quantités, montants)
+  - **PDS_CONTRAT** : Première valeur (cohérence contractuelle)
+- Réduction du nombre de lignes pour simplifier l'analyse
+
+#### **Analyse des Périodes de Prix**
+- **Résumé global** : Nombre de contrats, articles et périodes
+- **Articles avec changements** : Liste des articles ayant subi des variations tarifaires
+- **Analyse détaillée** : Variations min/max et pourcentages de changement
+
+## 🔧 Validation des Données
+
+L'application utilise **Pandera** pour valider les données :
+
+### JournalVentesModel
+- Valide la structure des données du journal des ventes
+- Conversion automatique des types (`coerce = True`)
+- Permet les colonnes supplémentaires (`strict = False`)
+
+### PricePeriodModel  
+- Valide les périodes de prix générées
+- Contrôle strict de la structure (`strict = True`)
+- Validation que `duree_jours >= 1`
+
+## 🚀 Fonctionnalités Avancées
+
+### Gestion des Erreurs
+- **Arrêt conditionnel** : Utilisation de `mo.stop()` pour éviter l'exécution sans données
+- **Messages informatifs** : Affichage des statuts de chargement et erreurs
+- **Validation robuste** : Gestion des fichiers manquants ou mal formatés
+
+### Performance
+- **Opérations vectorisées** : Utilisation des fonctions pandas optimisées
+- **Traitement par chunks** : Gestion efficace des gros volumes de données
+- **Cache intelligent** : Réutilisation des données entre cellules
+
+### Interface Utilisateur
+- **Navigation intuitive** : Chemins initiaux configurés pour faciliter la sélection
+- **Feedback visuel** : Indicateurs de progression et messages de statut
+- **Affichage adaptatif** : Masquage du code pour une interface épurée
+
+## 🔄 Workflow Type
+
+1. **Préparation** : Placer les fichiers R15 (ZIP) et le journal des ventes (Excel) dans `~/data/ACC`
+2. **Configuration** : Lancer l'application et sélectionner les fichiers/dossiers
+3. **Paramétrage** : Choisir la date de régularisation appropriée
+4. **Traitement** : L'application traite automatiquement les données
+5. **Analyse** : Examiner les résultats et identifier les optimisations possibles
+6. **Export** : Utiliser les données traitées pour les processus de facturation
+
+## 📝 Notes Techniques
+
+- **Timezone** : Toutes les dates sont converties en UTC pour la cohérence
+- **Types numériques** : Conversion automatique des colonnes EA avec gestion des erreurs
+- **Mémoire** : Optimisation par copie sélective des DataFrames
+- **Compatibilité** : Support des formats Excel (.xlsx, .xls)
+
+Cette documentation couvre l'ensemble des fonctionnalités de l'application ACC. Pour toute question technique ou suggestion d'amélioration, consultez le code source ou contactez l'équipe de développement.

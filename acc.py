@@ -351,14 +351,21 @@ def _(date_regularisation_picker, debut_acc, r15):
     # Filtrer les données R15
     r15_filtered = r15[
         (r15['Date_Releve'] >= debut_acc) & 
-        (r15['Date_Releve'] <= date_regularisation)
+        (r15['Date_Releve'] <= date_regularisation) &
+        (r15['Autoconsommation_Collective'] == '0')
     ].copy()
 
     # Afficher un résumé du filtrage
     print(f"Période filtrée : de {debut_acc.date()} à {date_regularisation.date()}")
     print(f"Nombre de lignes après filtrage : {len(r15_filtered)} (sur {len(r15)} lignes totales)")
 
-    return (date_regularisation,)
+    return date_regularisation, r15_filtered
+
+
+@app.cell
+def _(r15_filtered):
+    r15_filtered
+    return
 
 
 @app.cell(hide_code=True)
@@ -376,7 +383,11 @@ def journal_ventes_section():
     - **Chronologie** : Dates de facturation pour l'analyse temporelle
 
     ### 🔄 Filtrage automatique
-    Les données seront automatiquement filtrées sur la période sélectionnée (début ACC → date de régularisation).
+    Les données seront automatiquement filtrées selon ces critères :
+    - **Période temporelle** : début ACC → date de régularisation
+    - **Articles CONSO uniquement** : seuls les articles commençant par "CONSO" seront analysés
+
+    Les articles d'abonnement et autres prestations seront exclus de l'analyse des changements de prix.
 
     **👇 Sélectionnez votre fichier Excel du journal des ventes :**
     """
@@ -445,15 +456,36 @@ def _(date_regularisation, debut_acc, journal_picker):
         (journal_ventes_validated['DATEFACT'] <= date_regularisation)
     ].copy()
 
+    # Filtrage des articles CONSO uniquement
+    journal_ventes_conso = journal_ventes_filtered[
+        journal_ventes_filtered['CODE_ARTICLE'].str.startswith('CONSO', na=False)
+    ].copy()
+
+    # Messages informatifs sur le filtrage
+    nb_lignes_avant_filtrage_conso = len(journal_ventes_filtered)
+    nb_lignes_apres_filtrage_conso = len(journal_ventes_conso)
+    nb_lignes_filtrees_conso = nb_lignes_avant_filtrage_conso - nb_lignes_apres_filtrage_conso
+
+    # Articles CONSO uniques identifiés
+    articles_conso_uniques = sorted(journal_ventes_conso['CODE_ARTICLE'].unique()) if not journal_ventes_conso.empty else []
+
     mo.md(f"""✅ **Fichier chargé:** {journal_picker.value[0].name}
 
     {validation_message}
 
     **Période filtrée:** de {debut_acc.date()} à {date_regularisation.date()}
 
-    **Nombre de lignes:** {len(journal_ventes_filtered)} (sur {len(journal_ventes_validated)} lignes totales)""")
-    journal_ventes = journal_ventes_filtered
-    # Ajout col PRM
+    **Nombre de lignes après filtrage temporel:** {nb_lignes_avant_filtrage_conso} (sur {len(journal_ventes_validated)} lignes totales)
+
+    🔍 **Filtrage articles CONSO appliqué:**
+
+    - **{nb_lignes_apres_filtrage_conso}** lignes conservées (articles CONSO)
+    - **{nb_lignes_filtrees_conso}** lignes filtrées (articles non-CONSO)
+    - **Articles CONSO identifiés:** {', '.join(articles_conso_uniques) if articles_conso_uniques else 'Aucun'}
+
+    ✅ **Seuls les articles de consommation (CONSO_*) seront analysés pour les changements de prix**""")
+
+    journal_ventes = journal_ventes_conso
     return (journal_ventes,)
 
 
@@ -465,16 +497,17 @@ def journal_ventes_display():
 
     Données du journal des ventes chargées et filtrées sur votre période d'analyse.
 
-    **Validation des données :**
+    **Validation et filtrage des données :**
 
     - Dates de facturation converties en UTC
-    - Filtrage appliqué sur la période de régularisation  
+    - Filtrage appliqué sur la période de régularisation
+    - **Filtrage CONSO** : seuls les articles commençant par "CONSO" sont conservés
     - Structure des données vérifiée
 
     **Colonnes importantes :**
 
     - **CONTRAT** : Identifiant unique du contrat
-    - **CODE_ARTICLE** : Type de prestation (ABONNEMENT, CONSO_ENERGIE...)
+    - **CODE_ARTICLE** : Type de prestation CONSO (CONSO_BASE, CONSO_HP, CONSO_HC...)
     - **PUHT** : Prix unitaire hors taxe (utilisé pour détecter les changements)
     - **DATEFACT** : Date de facturation
     """
@@ -522,12 +555,12 @@ def _(journal_ventes):
     groupby_cols = ['CONTRAT', 'PÉRIODE', 'CODE_ARTICLE', 'PUHT']
 
     # Colonnes numériques à sommer (exclure PDS_CONTRAT et les colonnes de groupby)
-    numeric_cols = [col for col in journal_ventes.columns 
+    _numeric_cols = [col for col in journal_ventes.columns 
                     if journal_ventes[col].dtype in ['int64', 'float64'] 
                     and col not in ['PDS_CONTRAT'] + groupby_cols]
 
     # Créer le dictionnaire d'agrégation
-    agg_dict = {col: 'sum' for col in numeric_cols}
+    agg_dict = {col: 'sum' for col in _numeric_cols}
     # Pour PDS_CONTRAT, prendre la première valeur (devrait être la même pour un contrat)
     if 'PDS_CONTRAT' in journal_ventes.columns:
         agg_dict['PDS_CONTRAT'] = 'first'
@@ -633,7 +666,7 @@ def _(journal_ventes):
     Les périodes de prix ont été identifiées en détectant les changements de PUHT dans la séquence chronologique pour chaque combinaison CONTRAT-CODE_ARTICLE.
     """)
 
-    return articles_with_changes, price_periods
+    return (price_periods,)
 
 
 @app.cell(hide_code=True)
@@ -645,6 +678,7 @@ def periodes_prix_display():
     Tableau détaillé de toutes les périodes tarifaires détectées dans vos données.
 
     **Structure des résultats :**
+
     - **CONTRAT** : Identifiant du contrat concerné
     - **CODE_ARTICLE** : Type de prestation tarifée
     - **PUHT** : Prix unitaire stable durant la période
@@ -653,6 +687,7 @@ def periodes_prix_display():
     - **duree_jours** : Durée totale en jours
 
     **Interprétation :**
+
     - Chaque ligne représente une période de prix stable
     - Les dates sont continues entre les périodes d'un même article
     - Un changement de PUHT génère une nouvelle période
@@ -667,121 +702,68 @@ def _(price_periods):
     return
 
 
-@app.cell(hide_code=True)
-def changements_prix_section():
-    mo.md(
-        r"""
-    ## 🔄 Identification des Changements Tarifaires
+@app.cell
+def _(price_periods, r15_filtered):
+    # Regrouper les données R15 par période de prix
 
-    Vue synthétique des articles ayant subi des modifications de prix durant la période analysée.
+    # Vérifier qu'on a les données nécessaires
+    if r15_filtered.empty or price_periods.empty:
+        print("⚠️ Données manquantes pour le regroupement par période")
+        r15_by_period = pd.DataFrame()
+    else:
+        # Créer une liste pour stocker les résultats
+        period_aggregations = []
 
-    ### 📈 Détection automatique
-    Le système identifie les articles avec :
-    - **Périodes multiples** : Plus d'une période de prix = changement détecté
-    - **Stabilité tarifaire** : Une seule période = prix constant
-    - **Fréquence des changements** : Nombre de périodes par article
+        # Pour chaque période de prix identifiée
+        for _, period in price_periods.iterrows():
+            # Filtrer les données R15 pour cette période
+            mask = (
+                (r15_filtered['Date_Releve'] >= period['date_debut']) & 
+                (r15_filtered['Date_Releve'] <= period['date_fin'])
+            )
+            r15_period = r15_filtered[mask]
 
-    Cette analyse vous permet de cibler rapidement les postes tarifaires ayant évolué et nécessitant une attention particulière pour la régularisation.
-    """
-    )
-    return
+            if not r15_period.empty:
+                # Identifier les colonnes numériques (notamment celles commençant par EA)
+                numeric_cols = r15_period.select_dtypes(include=['float64', 'int64']).columns.tolist()
+
+                # Calculer les sommes pour les colonnes numériques
+                aggregation = {col: r15_period[col].sum() for col in numeric_cols}
+
+                # Ajouter les informations de la période
+                aggregation['CONTRAT'] = period['CONTRAT']
+                aggregation['CODE_ARTICLE'] = period['CODE_ARTICLE']
+                aggregation['PUHT'] = period['PUHT']
+                aggregation['date_debut'] = period['date_debut']
+                aggregation['date_fin'] = period['date_fin']
+                aggregation['duree_jours'] = period['duree_jours']
+                aggregation['nb_lignes_r15'] = len(r15_period)
+
+                period_aggregations.append(aggregation)
+
+        # Créer le DataFrame final
+        if period_aggregations:
+            r15_by_period = pd.DataFrame(period_aggregations)
+
+            # Réorganiser les colonnes pour mettre les infos de période en premier
+            info_cols = ['CONTRAT', 'CODE_ARTICLE', 'PUHT', 'date_debut', 'date_fin', 'duree_jours', 'nb_lignes_r15']
+            numeric_cols = [col for col in r15_by_period.columns if col not in info_cols]
+            r15_by_period = r15_by_period[info_cols + numeric_cols]
+
+            print(f"✅ Regroupement effectué : {len(r15_by_period)} périodes avec données R15")
+            print(f"📊 Colonnes numériques agrégées : {', '.join(numeric_cols[:5])}{'...' if len(numeric_cols) > 5 else ''}")
+        else:
+            r15_by_period = pd.DataFrame()
+            print("⚠️ Aucune correspondance trouvée entre les périodes de prix et les données R15")
+
+    r15_by_period
+    return (r15_by_period,)
 
 
 @app.cell
-def _(articles_with_changes):
-    # Afficher les articles avec changements de prix
-    if not articles_with_changes.empty:
-        mo.md("### 🔄 Articles avec Changements de Prix")
-        articles_with_changes.sort_values('nb_periodes_prix', ascending=False)
-    else:
-        mo.md("### ✅ Aucun Changement de Prix Détecté")
-    return
-
-
-@app.cell(hide_code=True)
-def variations_prix_section():
-    mo.md(
-        r"""
-    ## 📊 Analyse Détaillée des Variations de Prix
-
-    Calcul précis des écarts tarifaires pour quantifier l'impact des changements de prix.
-
-    ### 📐 Métriques calculées
-    - **Prix minimum/maximum** : Fourchette tarifaire par article
-    - **Variation absolue** : Différence en euros entre prix min et max
-    - **Variation relative** : Pourcentage d'évolution tarifaire
-    - **Durée totale** : Nombre de jours couverts par l'analyse
-
-    ### 🎯 Indicateurs clés
-    - Articles avec les plus fortes variations
-    - Impact potentiel sur la facturation
-    - Tendances d'évolution tarifaire
-
-    Ces informations sont cruciales pour évaluer l'impact financier des changements tarifaires sur vos contrats d'autoconsommation collective.
-    """
-    )
-    return
-
-
-@app.cell
-def _(price_periods):
-    # Analyse détaillée des changements de prix
-    if not price_periods.empty:
-        # Prix min/max par article
-        price_analysis = (price_periods.groupby(['CONTRAT', 'CODE_ARTICLE'])
-                         .agg({
-                             'PUHT': ['min', 'max', 'count'],
-                             'duree_jours': 'sum'
-                         })
-                         .round(4))
-
-        # Aplatir les colonnes multi-niveaux
-        price_analysis.columns = ['_'.join(col) for col in price_analysis.columns]
-        price_analysis = price_analysis.reset_index()
-
-        # Calculer la variation de prix
-        price_analysis['variation_prix'] = price_analysis['PUHT_max'] - price_analysis['PUHT_min']
-        price_analysis['variation_percent'] = (price_analysis['variation_prix'] / price_analysis['PUHT_min'] * 100).round(2)
-
-        # Filtrer les articles avec variation de prix significative
-        significant_changes = price_analysis[price_analysis['variation_prix'] > 0].sort_values('variation_percent', ascending=False)
-
-        mo.md("### 📈 Analyse des Variations de Prix")
-        significant_changes
-    else:
-        mo.md("### ℹ️ Aucune donnée disponible pour l'analyse des variations")
-    return
-
-
-@app.cell(hide_code=True)
-def conclusion():
-    mo.md(
-        r"""
-    ## 🎉 Analyse Terminée
-
-    Félicitations ! Votre analyse des données d'autoconsommation collective est maintenant complète.
-
-    ### 📋 Récapitulatif de l'analyse réalisée
-
-    1. ✅ **Données R15 traitées** : Flux électriques analysés sur la période
-    2. ✅ **Journal des ventes consolidé** : Facturations groupées et validées  
-    3. ✅ **Périodes de prix identifiées** : Changements tarifaires détectés
-    4. ✅ **Variations quantifiées** : Impact des évolutions tarifaires calculé
-
-    ### 🚀 Prochaines étapes recommandées
-
-    - **Validation métier** : Vérifiez la cohérence des changements détectés avec vos contrats
-    - **Impact financier** : Évaluez les conséquences des variations sur la facturation
-    - **Régularisation** : Utilisez ces analyses pour ajuster les facturations si nécessaire
-    - **Suivi périodique** : Répétez l'analyse pour monitorer les évolutions tarifaires
-
-    ### 💡 Points d'attention
-
-    N'hésitez pas à explorer les différents tableaux générés pour affiner votre compréhension des données et identifier d'éventuelles anomalies ou opportunités d'optimisation tarifaire.
-
-    **Vos données sont maintenant prêtes pour la régularisation ACC !**
-    """
-    )
+def _(r15_by_period):
+    # Afficher le tableau de regroupement par période
+    r15_by_period
     return
 
 
